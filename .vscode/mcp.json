@@ -1,0 +1,11 @@
+{
+  "servers": {
+    "resume-tools": {
+      "type": "stdio",
+      "command": "dotnet",
+      "args": [
+        "C:\\Users\\snehi\\source\\repos\\McpResumeTools\\bin\\Release\\net10.0\\publish\\McpResumeTools.dll"
+      ]
+    }
+  }
+}
