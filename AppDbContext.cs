@@ -1,15 +1,14 @@
-﻿using Microsoft.EntityFrameworkCore;
-using McpResumeTools.Models;
+﻿using McpResumeTools.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace McpResumeTools;
 
 public class AppDbContext : DbContext
 {
-    public DbSet<Skill> Skills => Set<Skill>();
-
-    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    public AppDbContext(DbContextOptions<AppDbContext> options)
+        : base(options)
     {
-        optionsBuilder.UseSqlServer(
-            "Server=SNEHILKOSMETTY\\SQLEXPRESS;Database=McpResumeDb;Trusted_Connection=True;TrustServerCertificate=True;");
     }
+
+    public DbSet<Skill> Skills => Set<Skill>();
 }
