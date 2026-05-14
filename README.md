@@ -1,8 +1,8 @@
 # McpResumeTools
 
-A .NET 10 MCP (Model Context Protocol) server that exposes developer profile tools to AI clients such as MCP Inspector, GitHub Copilot Agent Mode, or Claude Desktop.
+A .NET 10 MCP (Model Context Protocol) server that exposes developer profile tools to AI clients such as MCP Inspector, GitHub Copilot Agent Mode, and Claude Desktop.
 
-This project demonstrates how an AI client can call backend .NET methods through MCP and interact with SQL Server, EF Core, and OpenAI-powered tools.
+This project demonstrates how AI clients can invoke backend .NET tools through MCP and interact with SQL Server, EF Core, and OpenAI-powered services.
 
 ---
 
@@ -10,12 +10,13 @@ This project demonstrates how an AI client can call backend .NET methods through
 
 - .NET 10 MCP Server
 - MCP stdio transport
-- SQL Server + Entity Framework Core
+- SQL Server + Entity Framework Core integration
 - AI-callable tools
 - MCP Inspector testing
-- GitHub Copilot Agent Mode testing
+- GitHub Copilot Agent Mode support
 - OpenAI integration
-- Secure API key handling using environment variables
+- Dependency Injection with ASP.NET Core
+- Secure API key management
 
 ---
 
@@ -23,14 +24,14 @@ This project demonstrates how an AI client can call backend .NET methods through
 
 ```text
 MCP Inspector / GitHub Copilot / Claude
-        ↓
-     MCP Client
-        ↓
-   JSON-RPC over stdio
-        ↓
-  .NET MCP Server
-        ↓
- SQL Server / OpenAI API
+                ↓
+            MCP Client
+                ↓
+      JSON-RPC over stdio
+                ↓
+        .NET MCP Server
+                ↓
+   SQL Server / OpenAI API
 ```
 
 ---
@@ -54,6 +55,9 @@ McpResumeTools
 │
 ├── Program.cs
 ├── AppDbContext.cs
+├── appsettings.json
+├── appsettings.Development.json
+│
 ├── Models
 │   └── Skill.cs
 │
@@ -67,6 +71,8 @@ McpResumeTools
 
 ## NuGet Packages
 
+Install required packages:
+
 ```bash
 dotnet add package ModelContextProtocol
 dotnet add package Microsoft.Extensions.Hosting
@@ -78,6 +84,8 @@ dotnet add package OpenAI
 ---
 
 ## SQL Server Setup
+
+Run the following SQL script:
 
 ```sql
 CREATE DATABASE McpResumeDb;
@@ -107,189 +115,132 @@ GO
 
 ---
 
-## Entity Model
-
-### Models/Skill.cs
+## MCP Server Registration
 
 ```csharp
-namespace McpResumeTools.Models;
-
-public class Skill
-{
-    public int Id { get; set; }
-    public string Name { get; set; } = string.Empty;
-}
-```
-
----
-
-## DbContext
-
-### AppDbContext.cs
-
-```csharp
-using Microsoft.EntityFrameworkCore;
-using McpResumeTools.Models;
-
-namespace McpResumeTools;
-
-public class AppDbContext : DbContext
-{
-    public DbSet<Skill> Skills => Set<Skill>();
-
-    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-    {
-        optionsBuilder.UseSqlServer(
-            "Server=localhost;Database=McpResumeDb;Trusted_Connection=True;TrustServerCertificate=True;");
-    }
-}
-```
-
----
-
-## OpenAI API Key Setup
-
-Do not hardcode your OpenAI API key in the source code.
-
-Use an environment variable instead.
-
-### Windows PowerShell
-
-```powershell
-setx OPENAI_API_KEY "your_api_key_here"
-```
-
-After running this command, close and reopen your terminal or Visual Studio.
-
-### Check if the key exists
-
-```powershell
-echo $env:OPENAI_API_KEY
-```
-
----
-
-## Program.cs
-
-```csharp
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using ModelContextProtocol.Server;
-using System.ComponentModel;
-using McpResumeTools;
-using OpenAI.Chat;
-using System.ClientModel;
-
-var builder = Host.CreateApplicationBuilder(args);
-
-// Important for MCP stdio transport.
-// Avoid writing normal logs to stdout.
-builder.Logging.ClearProviders();
-
 builder.Services
     .AddMcpServer()
     .WithStdioServerTransport()
-    .WithToolsFromAssembly();
+    .WithTools<ResumeTools>();
+```
 
-await builder.Build().RunAsync();
+---
 
-[McpServerToolType]
-public static class ResumeTools
+## EF Core Registration
+
+```csharp
+builder.Services.AddDbContext<AppDbContext>(options =>
 {
-    [McpServerTool]
-    [Description("Returns Snehil's technical skills from SQL Server database.")]
-    public static string GetSkills()
-    {
-        using var db = new AppDbContext();
+    options.UseSqlServer(
+        builder.Configuration.GetConnectionString("DefaultConnection"));
+});
+```
 
-        var skills = db.Skills
-            .Select(s => s.Name)
-            .ToList();
+---
 
-        return string.Join(", ", skills);
-    }
+## Example MCP Tool
 
-    [McpServerTool]
-    [Description("Gets project experience.")]
-    public static string GetProjects()
-    {
-        return """
-        1. Full-stack React + ASP.NET Core apps
-        2. SQL Server + EF Core applications
-        3. AI-integrated .NET projects
-        4. MCP server development with .NET
-        """;
-    }
+```csharp
+[McpServerTool]
+[Description("Returns technical skills from SQL Server database.")]
+public string GetSkills()
+{
+    var skills = _db.Skills
+        .Select(s => s.Name)
+        .ToList();
 
-    [McpServerTool]
-    [Description("Recommends next skill based on career goal.")]
-    public static string RecommendNextSkill(string goal)
-    {
-        if (goal.ToLower().Contains("ai"))
-        {
-            return """
-            Recommended AI .NET path:
-            1. OpenAI API
-            2. Microsoft.Extensions.AI
-            3. Semantic Kernel
-            4. RAG with embeddings
-            5. MCP tools in C#
-            """;
-        }
-
-        return """
-        Recommended full-stack .NET path:
-        1. Azure
-        2. Clean Architecture
-        3. JWT Authentication
-        4. Redis
-        5. CI/CD with GitHub Actions
-        """;
-    }
-
-    [McpServerTool]
-    [Description("Generates interview questions for a given technical skill using OpenAI.")]
-    public static async Task<string> GenerateInterviewQuestions(string skill)
-    {
-        try
-        {
-            var apiKey = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
-
-            if (string.IsNullOrWhiteSpace(apiKey))
-            {
-                return "OpenAI API key is missing. Please set the OPENAI_API_KEY environment variable.";
-            }
-
-            var client = new ChatClient(
-                model: "gpt-4o-mini",
-                credential: new ApiKeyCredential(apiKey));
-
-            var response = await client.CompleteChatAsync(
-                $"""
-                Generate 5 practical interview questions for {skill}.
-                Keep the questions useful for a .NET / software developer interview.
-                """);
-
-            return response.Value.Content[0].Text;
-        }
-        catch (Exception ex)
-        {
-            return $"Error calling OpenAI: {ex.Message}";
-        }
-    }
+    return string.Join(", ", skills);
 }
 ```
+
+---
+
+## OpenAI MCP Tool
+
+```csharp
+[McpServerTool]
+[Description("Generates interview questions using OpenAI.")]
+public async Task<string> GenerateInterviewQuestions(string skill)
+{
+    var apiKey = _configuration["OpenAI:ApiKey"];
+
+    var client = new ChatClient(
+        model: "gpt-4o-mini",
+        credential: new ApiKeyCredential(apiKey));
+
+    var response = await client.CompleteChatAsync(
+        $"Generate 5 interview questions for {skill}");
+
+    return response.Value.Content[0].Text;
+}
+```
+
+---
+
+## Environment Configuration
+
+This project uses:
+
+- `appsettings.json` → safe public configuration
+- `appsettings.Development.json` → local secrets (ignored by Git)
+
+---
+
+## appsettings.json
+
+Safe to commit to GitHub.
+
+```json
+{
+  "ConnectionStrings": {
+    "DefaultConnection": ""
+  },
+  "OpenAI": {
+    "ApiKey": ""
+  }
+}
+```
+
+---
+
+## appsettings.Development.json
+
+Do NOT commit this file.
+
+```json
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Server=localhost;Database=McpResumeDb;Trusted_Connection=True;TrustServerCertificate=True;"
+  },
+  "OpenAI": {
+    "ApiKey": "YOUR_REAL_OPENAI_API_KEY"
+  }
+}
+```
+
+---
+
+## .gitignore
+
+Ensure this line exists:
+
+```gitignore
+appsettings.Development.json
+```
+
+This prevents secrets from being uploaded to GitHub.
 
 ---
 
 ## Running the Project
 
+Run locally:
+
 ```bash
 dotnet run
 ```
 
-For publish:
+Publish release build:
 
 ```bash
 dotnet publish -c Release
@@ -299,7 +250,7 @@ dotnet publish -c Release
 
 ## MCP Inspector Testing
 
-Run MCP Inspector:
+Start MCP Inspector:
 
 ```bash
 npx @modelcontextprotocol/inspector dotnet run
@@ -317,21 +268,28 @@ Then:
    ```text
    run
    ```
-5. Click `Connect`
-6. Click `List Tools`
+5. Open `Environment Variables`
+6. Add:
+   ```text
+   DOTNET_ENVIRONMENT=Development
+   ```
+7. Click `Connect`
+8. Click `List Tools`
 
-Available tools:
+---
+
+## Available MCP Tools
 
 | Tool | Description |
 |---|---|
 | get_skills | Returns skills from SQL Server |
 | get_projects | Returns project experience |
 | recommend_next_skill | Recommends learning path |
-| generate_interview_questions | Generates AI interview questions using OpenAI |
+| generate_interview_questions | Generates AI interview questions |
 
 ---
 
-## Example Tool Test
+## Example Tool Tests
 
 ### get_skills
 
@@ -340,6 +298,8 @@ Expected output:
 ```text
 React, TypeScript, ASP.NET Core Web API, SQL Server, Entity Framework Core, MCP, AI Integration in .NET
 ```
+
+---
 
 ### generate_interview_questions
 
@@ -355,17 +315,17 @@ Expected output:
 
 ```text
 1. What is middleware in ASP.NET Core?
-2. How does dependency injection work in ASP.NET Core?
+2. Explain dependency injection in ASP.NET Core.
 3. What is the difference between controllers and minimal APIs?
-4. How do you secure an ASP.NET Core Web API?
-5. How do you handle configuration in ASP.NET Core?
+4. How do you secure ASP.NET Core Web APIs?
+5. How do you manage configuration in ASP.NET Core?
 ```
 
 ---
 
-## GitHub Copilot / Visual Studio MCP Config
+## Visual Studio / GitHub Copilot MCP Configuration
 
-Example `.vscode/mcp.json` or MCP server config:
+Example `.vscode/mcp.json`:
 
 ```json
 {
@@ -374,30 +334,38 @@ Example `.vscode/mcp.json` or MCP server config:
       "type": "stdio",
       "command": "dotnet",
       "args": [
-        "C:\\Users\\.....\\source\\repos\\McpResumeTools\\bin\\Release\\net10.0\\publish\\McpResumeTools.dll"
+        "C:\\Users\\YOUR_USERNAME\\source\\repos\\McpResumeTools\\bin\\Release\\net10.0\\publish\\McpResumeTools.dll"
       ]
     }
   }
 }
 ```
 
-Update the path based on your local project folder.
+Update the DLL path based on your local machine.
 
 ---
 
-## Important: Do Not Commit Secrets
+## Security Best Practices
 
 Never commit:
 
 - OpenAI API keys
 - GitHub tokens
-- Azure keys
-- database passwords
-- `.env` files with real secrets
+- Azure secrets
+- SQL passwords
+- `.env` files
+- `appsettings.Development.json`
 
-Use environment variables instead.
+Use:
+- environment variables
+- local development configuration
+- secret managers
 
-Recommended `.gitignore` additions:
+for sensitive information.
+
+---
+
+## Recommended .gitignore Additions
 
 ```gitignore
 # Secrets
@@ -426,7 +394,8 @@ Completed:
 - EF Core integration
 - MCP Inspector testing
 - OpenAI SDK integration
-- Environment variable setup for API key
+- Dependency Injection setup
+- Secure configuration management
 
 Known issue:
 
@@ -436,28 +405,29 @@ Known issue:
 
 ## Future Improvements
 
-- Add resume analysis tool
-- Add job description comparison tool
-- Add match score calculation
-- Add Semantic Kernel
-- Add RAG with embeddings
-- Add vector database
-- Add Azure deployment
-- Add React frontend dashboard
+- Resume analysis tool
+- Job description comparison
+- Resume-job match scoring
+- Semantic Kernel integration
+- RAG with embeddings
+- Vector database integration
+- Azure deployment
+- React frontend dashboard
 
 ---
 
 ## Learning Outcomes
 
-This project helped demonstrate:
+This project demonstrates:
 
 - How MCP works
-- How AI clients call backend tools
-- How JSON-RPC over stdio works
-- How .NET can expose AI-callable tools
-- How EF Core can provide real data to MCP tools
-- How OpenAI can be integrated into MCP tools
-- How to secure API keys using environment variables
+- How AI clients invoke backend tools
+- JSON-RPC over stdio communication
+- AI-callable .NET backend architecture
+- EF Core + SQL Server integration
+- OpenAI integration in MCP tools
+- Dependency Injection in MCP servers
+- Secure secret management
 
 ---
 
