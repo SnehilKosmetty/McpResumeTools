@@ -106,19 +106,21 @@ namespace McpResumeTools.Tools
                     credential: new ApiKeyCredential(apiKey));
 
                 var prompt = $"""
-                Analyze the following resume for a .NET / Full Stack Developer role.
+                You are an expert technical recruiter and resume reviewer.
 
-                Return the response in this exact format:
+                Analyze the following resume for a .NET Full Stack Developer role.
 
-                1. Resume Summary
-                2. Detected Technical Skills
-                3. Strong Areas
-                4. Weak Areas
-                5. Missing Skills
-                6. Resume Improvement Suggestions
-                7. Recommended Next Learning Path
+                Evaluate:
+                - ATS friendliness
+                - Technical depth
+                - Cloud skills
+                - Frontend/backend balance
+                - Project quality
+                - Missing industry-standard skills
 
-                Resume Text:
+                Return response in structured sections.
+
+                Resume:
                 {resumeText}
                 """;
 
