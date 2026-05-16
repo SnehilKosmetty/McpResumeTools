@@ -87,5 +87,49 @@ namespace McpResumeTools.Tools
                 return $"Error calling OpenAI: {ex.Message}";
             }
         }
+
+        [McpServerTool]
+        [Description("Analyzes a resume using OpenAI and returns skills, strengths, weak areas, and improvement suggestions.")]
+        public async Task<string> AnalyzeResume(string resumeText)
+        {
+            try
+            {
+                var apiKey = _configuration["OpenAI:ApiKey"];
+
+                if (string.IsNullOrWhiteSpace(apiKey))
+                {
+                    return "OpenAI API key is missing. Please set it in appsettings.Development.json or environment variable.";
+                }
+
+                var client = new ChatClient(
+                    model: "gpt-4o-mini",
+                    credential: new ApiKeyCredential(apiKey));
+
+                var prompt = $"""
+                Analyze the following resume for a .NET / Full Stack Developer role.
+
+                Return the response in this exact format:
+
+                1. Resume Summary
+                2. Detected Technical Skills
+                3. Strong Areas
+                4. Weak Areas
+                5. Missing Skills
+                6. Resume Improvement Suggestions
+                7. Recommended Next Learning Path
+
+                Resume Text:
+                {resumeText}
+                """;
+
+                var response = await client.CompleteChatAsync(prompt);
+
+                return response.Value.Content[0].Text;
+            }
+            catch (Exception ex)
+            {
+                return $"Error analyzing resume: {ex.Message}";
+            }
+        }
     }
 }
